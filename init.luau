@@ -6,7 +6,7 @@ local UserInputService = game:GetService("UserInputService")
 local Workspace = game:GetService("Workspace")
 local Debris = game:GetService("Debris")
 
--- rough penetration values
+-- rough penetration values (higher = easier to penetrate)
 local MATERIAL_PENETRATION: {[Enum.Material]: number} = {
 	[Enum.Material.Glass] = 0.6,
 	[Enum.Material.Wood] = 0.4,
@@ -18,7 +18,7 @@ local MATERIAL_PENETRATION: {[Enum.Material]: number} = {
 	[Enum.Material.Ice] = 0.35,
 }
 
--- bounce coefficient per material
+-- bounce coefficient per material (higher = bouncier)
 local MATERIAL_BOUNCE: {[Enum.Material]: number} = {
 	[Enum.Material.Glass] = 0.2,
 	[Enum.Material.Wood] = 0.35,
@@ -31,6 +31,7 @@ local MATERIAL_BOUNCE: {[Enum.Material]: number} = {
 
 local LOCAL_PLAYER: Player = Players.LocalPlayer or Players.PlayerAdded:Wait()
 
+-- camera can be nil very early, so we guard for that
 local function getCamera(): Camera
 	local cam = Workspace.CurrentCamera
 	if not cam then
@@ -41,7 +42,7 @@ end
 
 local CAMERA: Camera = getCamera()
 
--- debug stuff
+-- debug stuff (set false to silence prints + markers)
 local DEBUG: boolean = true
 
 local function dbg(name: string, extra: string?): ()
@@ -54,6 +55,7 @@ local function dbg(name: string, extra: string?): ()
 	end
 end
 
+-- tiny neon markers to visualize hits/bounces in world
 local function debugMarker(pos: Vector3, color: Color3, size: number?, life: number?): ()
 	if not DEBUG then return end
 
@@ -72,12 +74,12 @@ local function debugMarker(pos: Vector3, color: Color3, size: number?, life: num
 	Debris:AddItem(part, life or 1)
 end
 
--- safe unit for zero vectors
+-- safe unit for zero vectors (prevents NaNs)
 local function safeUnit(v: Vector3): Vector3
 	if v.Magnitude > 0 then
 		return v.Unit
 	end
-	return Vector3.new(0, 0, -1)
+	return -Vector3.zAxis
 end
 
 -- reflect velocity from a surface
@@ -174,6 +176,7 @@ function Projectile.new(): Projectile
 	return self
 end
 
+-- fully initialize a pooled projectile for reuse
 function Projectile:Activate(origin: Vector3, direction: Vector3, speed: number?, settings: ProjectileSettings, part: Part, rayParams: RaycastParams): ()
 	self.Position = origin
 
@@ -202,6 +205,7 @@ function Projectile:Activate(origin: Vector3, direction: Vector3, speed: number?
 	p.Parent = Workspace
 end
 
+-- return projectile to idle state (kept in pool)
 function Projectile:Deactivate(): ()
 	self.Alive = false
 	local p = self.Part
@@ -220,7 +224,7 @@ function Projectile:UpdateCFrame(): ()
 	self.Part.CFrame = self.LastCFrame
 end
 
--- object pool to reuse projectiles
+-- object pool to reuse projectiles (reduces allocations)
 local ProjectilePool = {} :: any
 ProjectilePool.__index = ProjectilePool
 
@@ -248,7 +252,6 @@ end
 
 
 -- manager that updates all projectiles
--- manager that updates all projectiles
 local ProjectileManager = {} :: any
 ProjectileManager.__index = ProjectileManager
 
@@ -263,6 +266,7 @@ function ProjectileManager.new(): ProjectileManager
 	self.RaycastParams.IgnoreWater = true
 	self.RaycastParams.FilterDescendantsInstances = {}
 
+	-- fixed step keeps collision stable even on variable framerate
 	self.FixedStep = 1 / 120
 	self.MaxDelta = 1 / 30
 
@@ -277,6 +281,7 @@ function ProjectileManager:SetIgnoreList(list: {Instance}): ()
 	self.RaycastParams.FilterDescendantsInstances = list
 end
 
+-- visual tracer part (purely cosmetic)
 function ProjectileManager:CreateVisualPart(): Part
 	local part = Instance.new("Part")
 
@@ -308,6 +313,7 @@ function ProjectileManager:CreateProjectile(origin: Vector3, direction: Vector3,
 	return proj
 end
 
+-- advance all active projectiles in fixed time slices
 function ProjectileManager:UpdateProjectiles(dt: number): ()
 	local capped = math.min(dt, self.MaxDelta)
 	local step = self.FixedStep
@@ -375,12 +381,13 @@ function ProjectileManager:HandleCollision(projectile: Projectile, raycastResult
 	local reflectVel: Vector3 = self:CalculateRicochet(projectile.Velocity, hitNormal)
 	local angle = math.deg(math.acos(math.clamp(safeUnit(projectile.Velocity):Dot(hitNormal * -1), -1, 1)))
 
-	-- penetration check
+	-- penetration check (lower angles have a better chance)
 	local didPenetrate = self:ApplyPenetration(projectile, hitMaterial, angle)
 
 	if didPenetrate then
 		debugMarker(hitPosition, Color3.fromRGB(0, 255, 120), 0.5, 1)
 
+		-- give the projectile a tiny nudge forward before continuing
 		local remaining = dt * 0.25
 		projectile.Position = hitPosition + safeUnit(projectile.Velocity) * 0.1
 		projectile:UpdateCFrame()
@@ -436,6 +443,7 @@ end
 
 local manager: ProjectileManager = ProjectileManager.new()
 
+-- origin roughly from head/camera so shots come from the player
 local function getMuzzleOrigin(): Vector3
 	local character = LOCAL_PLAYER.Character
 	local cam = getCamera()
