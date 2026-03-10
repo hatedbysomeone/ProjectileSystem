@@ -1,6 +1,6 @@
 # Projectile System
 
-A high-performance projectile simulation system for Roblox built with Luau strict typing.
+A high-performance projectile simulation system for Roblox written in **Luau (strict mode)**.
 
 ## Features
 
@@ -9,8 +9,8 @@ A high-performance projectile simulation system for Roblox built with Luau stric
 - Material penetration system
 - Object pooling for performance
 - Signal events for projectile lifecycle
-- Promise API for async projectile handling
-- Debug visualization for impacts and ricochets
+- Promise-based async API
+- Optional debug visualization
 
 ## Usage
 
@@ -23,3 +23,10 @@ manager:FireProjectileAsync(origin, direction, 900, {
 	MaxPenetration = 0.5,
 })
 ```
+
+## Dependencies
+
+This system depends on the following libraries:
+
+- [Promise](https://eryn.io/roblox-lua-promise/)
+- [Signal](https://github.com/Sleitnick/RbxUtil/blob/main/modules/signal/init.luau)
